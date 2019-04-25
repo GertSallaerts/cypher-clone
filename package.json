@@ -1,0 +1,13 @@
+{
+  "name": "@gertt/cypher-clone",
+  "version": "1.0.0",
+  "description": "Clone a Neo4j database using only Cypher queries",
+  "main": "src/index.js",
+  "bin": "./cli.js",
+  "keywords": [ "neo4j", "cypher", "sync", "clone" ],
+  "author": "Gert Sallaerts",
+  "license": "MIT",
+  "dependencies": {
+    "neo4j-driver": "^1.7.3"
+  }
+}
