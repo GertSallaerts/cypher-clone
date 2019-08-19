@@ -5,12 +5,15 @@ const neo4j = require('neo4j-driver').v1;
 const QueryBatcher = require('./query-batcher');
 
 const {
+    SRC_CHECK,
     EMPTY_DB,
     QUERY_NODES,
     QUERY_RELATIONSHIPS,
     CREATE_UNIQUE,
     DROP_UNIQUE,
     CLEANUP_UNIQUE,
+    CLEANUP_SRC_NODES,
+    CLEANUP_SRC_RELS,
     getCreateNode,
     getCreateRelationship,
 } = require('./queries');
@@ -97,6 +100,11 @@ async function writeTransaction(session, queries) {
 async function doSync(fromSession, toSession) {
     const writeQueue = new QueryBatcher(batch => writeTransaction(toSession, batch));
     const startTime = Date.now();
+    
+    const conflicts = await fromSession.run(SRC_CHECK);
+    
+    if (conflicts)
+        throw new Error('Source dataset has nodes or relationships that conflict with this tool.');
 
     await paginateQuery(toSession, EMPTY_DB, 20000);
     await dropIndexes(toSession);
@@ -124,6 +132,8 @@ async function doSync(fromSession, toSession) {
     clearInterval(interval);
 
     await paginateQuery(toSession, CLEANUP_UNIQUE, 20000);
+    await paginateQuery(fromSession, CLEANUP_SRC_NODES, 20000);
+    await paginateQuery(fromSession, CLEANUP_SRC_RELS, 20000);
     console.log('Removed temporary performance helpers');
 
     await toSession.run(DROP_UNIQUE);
