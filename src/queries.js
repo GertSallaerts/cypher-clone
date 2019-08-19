@@ -2,6 +2,14 @@
 const UNIQUE_LABEL = 'GERTSALLAERTS_CYPHER_CLONE_LABEL';
 const UNIQUE_ID = 'GERTSALLAERTS_CYPHER_CLONE_ID';
 
+const SRC_CHECK = `
+    OPTIONAL MATCH (nodeLabel:${UNIQUE_LABEL})
+    OPTIONAL MATCH (nodeProperty) WHERE EXISTS (nodeProperty.${UNIQUE_ID}
+    OPTIONAL MATCH ()-[rel]-()  WHERE EXISTS (nodeProperty.${UNIQUE_ID}
+    RETURN COALESCE(nodeLabel, nodeProperty, rel)
+    LIMIT 1
+`;
+
 const EMPTY_DB = `
     MATCH (node)
     WITH node LIMIT {limit}
