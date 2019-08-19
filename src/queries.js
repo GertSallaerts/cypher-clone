@@ -11,9 +11,10 @@ const EMPTY_DB = `
 
 const QUERY_NODES = `
     MATCH (node)
+    WHERE NOT node:${UNIQUE_LABEL}
+    WITH node LIMIT ${limit}
+    SET node:${UNIQUE_LABEL}
     RETURN node
-    ORDER BY id(node)
-    SKIP {skip} LIMIT {limit}
 `;
 
 const QUERY_RELATIONSHIPS = `
