@@ -94,12 +94,15 @@ function getCreateRelationship(rel) {
 }
 
 module.exports = {
+    SRC_CHECK,
     EMPTY_DB,
     QUERY_NODES,
     QUERY_RELATIONSHIPS,
     CREATE_UNIQUE,
     DROP_UNIQUE,
     CLEANUP_UNIQUE,
+    CLEANUP_SRC_NODES,
+    CLEANUP_SRC_RELS,
     getCreateNode,
     getCreateRelationship,
 };
