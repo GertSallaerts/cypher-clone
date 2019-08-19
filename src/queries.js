@@ -41,6 +41,21 @@ const CLEANUP_UNIQUE = `
     return 1
 `;
 
+const CLEANUP_SRC_NODES = `
+    MATCH (node:${UNIQUE_LABEL})
+    WITH node LIMIT {limit}
+    REMOVE node:${UNIQUE_LABEL}
+    return 1
+`;
+
+const CLEANUP_SRC_RELS = `
+    MATCH ()-[rel]->()
+    WHERE EXISTS(rel.${UNIQUE_ID})
+    WITH rel LIMIT ${limit}
+    REMOVE rel.${UNIQUE_ID}
+    RETURN 1
+`;
+
 function getCreateNode(node) {
     const labels = [ UNIQUE_LABEL ].concat(node.labels || []).join(':');
     const query = `CREATE (n:${labels}) SET n = {properties}`;
