@@ -19,9 +19,10 @@ const QUERY_NODES = `
 
 const QUERY_RELATIONSHIPS = `
     MATCH ()-[rel]->()
+    WHERE NOT EXISTS(rel.${UNIQUE_ID})
+    WITH rel LIMIT ${limit}
+    SET rel.${UNIQUE_ID} = 1
     RETURN rel
-    ORDER BY id(rel)
-    SKIP {skip} LIMIT {limit}
 `;
 
 const CREATE_UNIQUE = `
