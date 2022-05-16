@@ -1,7 +1,7 @@
 'use strict';
 
 const url = require('url');
-const neo4j = require('neo4j-driver').v1;
+const neo4j = require('neo4j-driver');
 const QueryBatcher = require('./query-batcher');
 
 const {
@@ -32,39 +32,87 @@ function getDriver(connectionString) {
 async function dropIndexes(session) {
     const constraints = await session.run('CALL db.constraints()');
 
-    await Promise.all(constraints.records.map(r => {
-        const query = `DROP ${r.get('description')}`;
-        return session.run(query);
-    }));
+    await writeTransaction(session, constraints.records.map(r => ({
+        query: `DROP CONSTRAINT ${r.get('name')}`
+    })));
 
     const indexes = await session.run('CALL db.indexes()');
 
-    await Promise.all(indexes.records.map(r => {
-        const query = `DROP ${r.get('description')}`;
-        return session.run(query);
-    }));
+    await writeTransaction(session, indexes.records.map(r => ({
+        query: `DROP INDEX ${r.get('name')}`
+    })));
 }
 
 async function copyIndexes(from, to) {
     const indexes = await from.run('CALL db.indexes()');
+    const constraints = await from.run('CALL db.constraints()');
+    const queries = [];
 
-    await Promise.all(indexes.records.map(r => {
+    indexes.records.forEach(r => {
+        const name = r.get('name');
+        const uniqueness = r.get('uniqueness');
         const type = r.get('type');
+        const entityType = r.get('entityType');
+        const labelsOrTypes = r.get('labelsOrTypes');
+        const properties = r.get('properties');
 
-        // It's a constraint;
-        if (type.indexOf('unique') > -1)
+        // Reserved name, auto-created index during migration
+        if (name === '__org_neo4j_schema_index_label_scan_store_converted_to_token_index')
             return;
 
-        const query = `CREATE ${r.get('description')}`;
-        return to.run(query);
-    }));
+        // It's a constraint;
+        if (uniqueness === 'UNIQUE')
+            return;
 
-    const constraints = await from.run('CALL db.constraints()');
+        const query = [ 'CREATE' ];
 
-    await Promise.all(constraints.records.map(r => {
-        const query = `CREATE ${r.get('description')}`;
-        return to.run(query);
-    }));
+        if (type !== 'BTREE')
+            query.push(type);
+
+        query.push(`INDEX ${name} FOR`);
+
+        if (labelsOrTypes.length > 1)
+            throw new Error('Unsupported INDEX in source');
+
+        if (entityType === 'NODE') {
+            if (labelsOrTypes.length === 1)
+                query.push(`(i:${labelsOrTypes[ 0 ]})`);
+            else
+                query.push('(i)');
+        } else if (entityType === 'RELATIONSHIP') {
+            if (labelsOrTypes.length === 1)
+                query.push(`()-[r:${labelsOrTypes[ 0 ]}]-()`);
+            else
+                query.push(`()-[r]-()`);
+        } else {
+            throw new Error('Unsupported INDEX in source');
+        }
+
+        query.push('ON');
+
+        if (labelsOrTypes.length === 1) {
+            if (!properties.length)
+                throw new Error('Unsupported INDEX in source');
+
+            query.push(`(${properties.map(p => `i.${p}`).join(', ')})`);
+        } else {
+            query.push('EACH');
+
+            if (entityType === 'NODE')
+                query.push('labels(i)');
+            else if (entityType === 'RELATIONSHIP')
+                query.push('type(i)');
+        }
+
+        queries.push({ query: query.join(' ') });
+    });
+
+
+    constraints.records.forEach(r => {
+        queries.push({ query: `CREATE ${r.get('description')}` });
+    });
+
+    await writeTransaction(to, queries);
 }
 
 async function paginateQuery(session, query, limit, onRecord) {
@@ -78,24 +126,26 @@ async function paginateQuery(session, query, limit, onRecord) {
     do {
         gotResults = false;
         await new Promise((res, rej) => session
-            .run(query, { skip, limit })
+            .run(query, {
+                skip: neo4j.int(skip),
+                limit: neo4j.int(limit)
+            })
             .subscribe({ onNext, onCompleted: res, onError: rej })
         );
         skip += limit;
-    } while (gotResults)
+    } while (gotResults);
 }
 
 
 async function writeTransaction(session, queries) {
     await session.writeTransaction(tx => {
-        queries.forEach(({ query, parameters }) => tx.run(query, parameters));
+        return queries.map(({ query, parameters }) => tx.run(query, parameters));
     })
         .catch(err => console.log(err));
 }
 
 
 async function doSync(fromSession, toSession) {
-    const writeQueue = new QueryBatcher(batch => writeTransaction(toSession, batch));
     const startTime = Date.now();
 
     await paginateQuery(toSession, EMPTY_DB, 20000);
@@ -105,6 +155,7 @@ async function doSync(fromSession, toSession) {
     await toSession.run(CREATE_UNIQUE);
     console.log('Prepared UNIQUE constraint for sync performance');
 
+    const writeQueue = new QueryBatcher(batch => writeTransaction(toSession, batch));
     const interval = setInterval(() => {
         console.log('Queue size:', writeQueue.size);
     }, 2000);
@@ -152,4 +203,4 @@ module.exports = function sync(from, to) {
     });
 
     return promise;
-}
+};
