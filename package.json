@@ -1,6 +1,6 @@
 {
   "name": "@gertt/cypher-clone",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Clone a Neo4j database using only Cypher queries",
   "main": "src/index.js",
   "bin": "./cli.js",
