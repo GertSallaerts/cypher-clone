@@ -46,6 +46,7 @@ async function dropIndexes(session) {
 async function copyIndexes(from, to) {
     const indexes = await from.run('CALL db.indexes()');
     const constraints = await from.run('CALL db.constraints()');
+    const indexProviders = {};
     const queries = [];
 
     indexes.records.forEach(r => {
@@ -61,8 +62,10 @@ async function copyIndexes(from, to) {
             return;
 
         // It's a constraint;
-        if (uniqueness === 'UNIQUE')
+        if (uniqueness === 'UNIQUE') {
+            indexProviders[ name ] = r.get('provider');
             return;
+        }
 
         const query = [ 'CREATE' ];
 
@@ -109,7 +112,13 @@ async function copyIndexes(from, to) {
 
 
     constraints.records.forEach(r => {
-        queries.push({ query: `CREATE ${r.get('description')}` });
+        const name = r.get('name');
+        const query = [ `CREATE ${r.get('description')}` ];
+
+        if (indexProviders[ name ])
+            query.push(`OPTIONS {indexProvider: '${indexProviders[ name ]}'}`);
+
+        queries.push({ query: query.join(' ') });
     });
 
     await writeTransaction(to, queries);
